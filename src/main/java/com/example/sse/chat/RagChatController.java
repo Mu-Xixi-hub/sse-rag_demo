@@ -32,20 +32,8 @@ public class RagChatController {
         StringBuilder fullContent = new StringBuilder();
 
         Flux<ServerSentEvent<String>> content = answerService.streamAnswer(sessionId, request.question())
-            .timeout(Duration.ofSeconds(30))
             .doOnNext(fullContent::append)
-            .map(chunk -> event("chunk", escape(chunk)))
-            .concatWith(Flux.defer(() -> Flux.just(event("done", String.valueOf(placeholder.id())))))
-            .doOnComplete(() -> messageStore.complete(placeholder.id(), fullContent.toString()))
-            .doOnCancel(() -> messageStore.complete(
-                placeholder.id(), fullContent + "\n\n【用户已中断生成】"))
-            .onErrorResume(error -> {
-                String partial = fullContent.isEmpty()
-                    ? errorMessage(error)
-                    : fullContent + "\n\n【生成中断】";
-                messageStore.complete(placeholder.id(), partial);
-                return Flux.just(event("error", escape(errorMessage(error))));
-            });
+            .map(chunk->event("chunk",escape(chunk)));
 
         return Flux.concat(
             Flux.just(event("start", String.valueOf(placeholder.id()))),

@@ -13,6 +13,7 @@ public class ChatMessageStore {
     private final Map<Long, ChatMessage> messages = new ConcurrentHashMap<>();
 
     public ChatMessage createPlaceholder(long sessionId) {
+        //
         long id = ids.incrementAndGet();
         ChatMessage message = new ChatMessage(id, sessionId, "", false, Instant.now());
         messages.put(id, message);
