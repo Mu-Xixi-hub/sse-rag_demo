@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SSE RAG 演示</title>
+  <style>
+    body{margin:0;background:#f5f7fb;font:15px/1.65 system-ui;color:#172033}.wrap{max-width:760px;margin:48px auto;padding:0 18px}
+    .card{background:#fff;border:1px solid #e5e9f2;border-radius:16px;padding:22px;box-shadow:0 8px 30px #24324a12}
+    textarea{width:100%;box-sizing:border-box;min-height:88px;padding:12px;border:1px solid #ccd3df;border-radius:10px;resize:vertical}
+    button{margin-top:12px;padding:10px 18px;border:0;border-radius:9px;background:#2563eb;color:#fff;cursor:pointer}button.stop{background:#dc2626;margin-left:8px}button:disabled{opacity:.45}
+    #answer{margin-top:18px;min-height:150px;padding:16px;background:#f8fafc;border-radius:10px;white-space:pre-wrap;word-break:break-word}.status{margin-top:10px;color:#64748b;font-size:13px}
+  </style>
+</head>
+<body><main class="wrap"><div class="card">
+  <h2>知识库问答 · SSE 演示</h2>
+  <textarea id="question">请介绍一下 SSE 流式输出。</textarea><br>
+  <button id="send">发送问题</button><button id="stop" class="stop" disabled>中断生成</button>
+  <div id="status" class="status">等待提问</div><div id="answer"></div>
+</div></main><script>
+const send=document.querySelector('#send'),stop=document.querySelector('#stop'),answer=document.querySelector('#answer'),statusEl=document.querySelector('#status');
+let controller=null, renderText='', pendingText='', raf=0;
+const unescapeData=s=>s.replace(/\\n/g,'\n').replace(/\\r/g,'\r').replace(/\\\\/g,'\\');
+function scheduleRender(){cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{renderText=pendingText;answer.textContent=renderText;});}
+async function ask(){
+  controller=new AbortController(); answer.textContent='';renderText='';pendingText='';send.disabled=true;stop.disabled=false;statusEl.textContent='正在连接…';
+  try{
+    const response=await fetch('/api/rag-chat/sessions/1/messages/stream',{method:'POST',headers:{'Content-Type':'application/json','Accept':'text/event-stream'},body:JSON.stringify({question:document.querySelector('#question').value}),signal:controller.signal});
+    if(!response.ok||!response.body)throw new Error('HTTP '+response.status);
+    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+    while(true){const {value,done}=await reader.read();buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});
+      const blocks=buffer.split(/\r?\n\r?\n/);buffer=blocks.pop()||'';
+      for(const block of blocks){let event='message',data=[];for(const line of block.split(/\r?\n/)){if(line.startsWith('event:'))event=line.slice(6).trim();if(line.startsWith('data:')){let value=line.slice(5);data.push(value.startsWith(' ')?value.slice(1):value);}}
+        const payload=unescapeData(data.join('\n'));if(event==='chunk'){pendingText+=payload;scheduleRender();}else if(event==='start')statusEl.textContent='生成中，消息 ID：'+payload;else if(event==='done')statusEl.textContent='生成完成，消息 ID：'+payload;else if(event==='error')statusEl.textContent=payload;
+      }if(done)break;
+    }
+  }catch(e){statusEl.textContent=e.name==='AbortError'?'已在浏览器端中断连接':'请求失败：'+e.message;}
+  finally{send.disabled=false;stop.disabled=true;controller=null;}
+}
+send.onclick=ask;stop.onclick=()=>controller?.abort();
+</script></body></html>

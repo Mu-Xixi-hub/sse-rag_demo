@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: sse-rag-demo
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    async:
+      request-timeout: 35s
+server:
+  port: 8080
